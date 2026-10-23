@@ -1,0 +1,69 @@
+# ─── Node / TypeScript / Package Managers ────────────────────────────────────
+node_modules/
+dist/
+build/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+
+# ─── Secrets, Credentials & Environment Files ────────────────────────────────
+.env
+.env.*
+!.env.example
+auth.json
+telegram.json
+bots-pool.json
+configs/
+*credentials*.json
+*secret*.json
+
+# ─── SSH & TLS Private Keys ──────────────────────────────────────────────────
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+infra/keys/
+
+# ─── Local Durable State & Databases (SQLite) ────────────────────────────────
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+state/
+
+# ─── Terraform / OpenTofu ────────────────────────────────────────────────────
+**/.terraform/
+**/.terraform.lock.hcl
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/crash.log
+**/crash.*.log
+**/*.tfvars
+**/*.tfvars.json
+!**/terraform.tfvars.example
+**/override.tf
+**/override.tf.json
+**/*_override.tf
+**/*_override.tf.json
+.terraformrc
+terraform.rc
+infra/.build/
+*.zip
+*.tar.gz
+
+# ─── OS & Editor Artifacts ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

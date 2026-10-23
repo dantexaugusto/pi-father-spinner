@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euxo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+# 1. System packages
+apt-get update -y
+apt-get install -y \
+  ca-certificates \
+  curl \
+  gnupg \
+  git \
+  tmux \
+  jq \
+  sqlite3 \
+  ripgrep \
+  fd-find \
+  unzip \
+  build-essential
+
+# Symlink fd if installed as fdfind on Ubuntu
+if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
+  ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+fi
+
+# 2. Install Node.js 24 LTS system-wide (/usr/bin/node)
+if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | cut -d. -f1 | tr -d 'v')" -lt 24 ]]; then
+  mkdir -p /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+  apt-get update -y
+  apt-get install -y nodejs
+fi
+
+# 3. Install Pi Coding Agent globally
+npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${pi_version}"
+
+# 4. Prepare ubuntu user directories
+install -d -m 0755 -o ubuntu -g ubuntu /home/ubuntu/projects
+install -d -m 0755 -o ubuntu -g ubuntu /home/ubuntu/pi-father-spinner
+install -d -m 0700 -o ubuntu -g ubuntu /home/ubuntu/.pi
+install -d -m 0700 -o ubuntu -g ubuntu /home/ubuntu/.pi/agent
+install -d -m 0700 -o ubuntu -g ubuntu /home/ubuntu/.pi/agent/father-spinner
+install -d -m 0700 -o ubuntu -g ubuntu /home/ubuntu/.pi/agent/father-spinner/configs
+
+# 5. Create systemd unit for persistent 24/7 Pi-Father tmux session
+cat <<'EOF' > /etc/systemd/system/pi-father.service
+[Unit]
+Description=Pi-Father Spinner Master Agent (tmux session: pi-father)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/pi-father-spinner
+Environment="HOME=/home/ubuntu"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="PI_PROJECTS_ROOT=/home/ubuntu/projects"
+Environment="PI_TELEGRAM_AUTOCONNECT=1"
+ExecStartPre=-/usr/bin/tmux kill-session -t pi-father
+ExecStart=/usr/bin/tmux new-session -d -s pi-father -c /home/ubuntu/pi-father-spinner "/home/ubuntu/pi-father-spinner/bin/run-father-loop.sh"
+ExecStop=/bin/bash -c 'touch /tmp/pi-father.stop && /usr/bin/tmux kill-session -t pi-father || true'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable pi-father.service
+
+touch /var/lib/cloud/pi-father-bootstrap-done

@@ -1,0 +1,49 @@
+# ─── AWS Lightsail Region & Plan ─────────────────────────────────────────────
+aws_region        = "us-east-1"
+availability_zone = "us-east-1a"
+project_name      = "pi-father-spinner"
+blueprint_id      = "ubuntu_24_04"
+
+# Plans: small_3_0 (2GB RAM), medium_3_0 (4GB RAM / 2 vCPU), large_3_0 (8GB RAM / 2 vCPU)
+bundle_id         = "medium_3_0"
+
+# Restrict SSH to your IP if desired (e.g. ["203.0.113.50/32"])
+ssh_allowed_cidrs = ["0.0.0.0/0"]
+
+# Optional: path to existing SSH keys (leave empty to auto-generate in infra/keys/)
+ssh_public_key_path  = ""
+ssh_private_key_path = ""
+
+# ─── Pi Agent & LLM Configuration ────────────────────────────────────────────
+pi_version             = "0.80.2"
+default_provider       = "google-gemini-cli"
+default_model          = "gemini-3.1-pro-preview"
+default_thinking_level = "high"
+sync_local_pi_auth     = true
+
+# Optional LLM API keys (if not using OAuth in ~/.pi/agent/auth.json)
+llm_env_vars = {
+  # GEMINI_API_KEY     = "AIza..."
+  # ANTHROPIC_API_KEY  = "sk-ant-..."
+  # OPENAI_API_KEY     = "sk-..."
+  # OPENROUTER_API_KEY = "sk-or-..."
+}
+
+# ─── Telegram Bots Configuration ─────────────────────────────────────────────
+# Master Pi-Father Bot Token from @BotFather
+father_bot_token         = "123456789:AAExampleMasterBotTokenFromBotFather"
+
+# Your numeric Telegram User ID (pre-pairs Father and all spun Child bots with your account)
+allowed_telegram_user_id = ""
+
+# Pool of pre-created Telegram bots for spinning up child Pi agents
+bot_pool = [
+  # {
+  #   token        = "1111111111:AAExampleChildBotToken1"
+  #   default_name = "Pi [Livre #1]"
+  # },
+  # {
+  #   token        = "2222222222:BBExampleChildBotToken2"
+  #   default_name = "Pi [Livre #2]"
+  # }
+]

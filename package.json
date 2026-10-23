@@ -1,0 +1,36 @@
+{
+  "name": "pi-father-spinner",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Pi-Father orchestrator extension and multi-instance Telegram bridge for spinning up Pi coding agents in tmux sessions with dedicated Telegram bots.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "telegram",
+    "tmux",
+    "orchestrator",
+    "multi-agent",
+    "extension"
+  ],
+  "license": "MIT",
+  "bin": {
+    "pi-father": "./bin/pi-father.sh"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/telegram.ts",
+      "./extensions/father-spinner.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "start:father": "./bin/pi-father.sh"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-ai": "*",
+    "@sinclair/typebox": "*"
+  }
+}

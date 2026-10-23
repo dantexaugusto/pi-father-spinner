@@ -1,0 +1,12 @@
+{
+  "bots": [
+    {
+      "token": "1111111111:AAExampleTokenFromBotFather_Bot1",
+      "defaultName": "Pi [Livre #1]"
+    },
+    {
+      "token": "2222222222:BBExampleTokenFromBotFather_Bot2",
+      "defaultName": "Pi [Livre #2]"
+    }
+  ]
+}
