@@ -105,3 +105,21 @@ variable "sync_local_pi_auth" {
   type        = bool
   default     = true
 }
+
+variable "sync_local_git_ssh_key" {
+  description = "If true and ~/.ssh/id_rsa (+ id_rsa.pub) exist locally, copies them to /home/ubuntu/.ssh/ on the VM so Pi agents can clone/push private Git repos"
+  type        = bool
+  default     = true
+}
+
+variable "git_user_name" {
+  description = "Global git user.name configured on the VM for Pi agents"
+  type        = string
+  default     = "dantexaugusto"
+}
+
+variable "git_user_email" {
+  description = "Global git user.email configured on the VM for Pi agents"
+  type        = string
+  default     = "dantexaugusto@gmail.com"
+}

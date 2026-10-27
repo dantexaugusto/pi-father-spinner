@@ -1,11 +1,20 @@
 locals {
-  use_custom_ssh_key = trimspace(var.ssh_public_key_path) != ""
-  local_pi_auth_path = pathexpand("~/.pi/agent/auth.json")
-  has_local_pi_auth  = var.sync_local_pi_auth && fileexists(local.local_pi_auth_path)
+  use_custom_ssh_key    = trimspace(var.ssh_public_key_path) != ""
+  local_pi_auth_path    = pathexpand("~/.pi/agent/auth.json")
+  has_local_pi_auth     = var.sync_local_pi_auth && fileexists(local.local_pi_auth_path)
+  local_git_id_rsa_path = pathexpand("~/.ssh/id_rsa")
+  local_git_id_pub_path = pathexpand("~/.ssh/id_rsa.pub")
+  has_local_git_ssh_key = var.sync_local_git_ssh_key && fileexists(local.local_git_id_rsa_path) && fileexists(local.local_git_id_pub_path)
 
   ssh_public_key_content  = local.use_custom_ssh_key ? trimspace(file(pathexpand(var.ssh_public_key_path))) : trimspace(tls_private_key.generated[0].public_key_openssh)
   ssh_private_key_content = local.use_custom_ssh_key ? file(pathexpand(var.ssh_private_key_path)) : tls_private_key.generated[0].private_key_openssh
   ssh_private_key_file    = local.use_custom_ssh_key ? pathexpand(var.ssh_private_key_path) : local_sensitive_file.ssh_private_key[0].filename
+
+  git_ssh_config_content = <<-EOT
+    Host github.com gitlab.com bitbucket.org ssh.dev.azure.com
+      StrictHostKeyChecking accept-new
+      IdentityFile ~/.ssh/id_rsa
+  EOT
 
   pi_settings_json = jsonencode({
     defaultProvider      = var.default_provider
@@ -146,7 +155,8 @@ resource "terraform_data" "app_deploy" {
     var.allowed_telegram_user_id,
     sha256(local.bot_pool_json),
     sha256(local.llm_env_content),
-    local.has_local_pi_auth ? filesha256(local.local_pi_auth_path) : "no-auth"
+    local.has_local_pi_auth ? filesha256(local.local_pi_auth_path) : "no-auth",
+    local.has_local_git_ssh_key ? filesha256(local.local_git_id_rsa_path) : "no-git-ssh"
   ]
 
   connection {
@@ -170,7 +180,8 @@ resource "terraform_data" "app_deploy" {
       "set -eu",
       "if [ ! -f /var/lib/cloud/pi-father-bootstrap-done ]; then echo '[terraform] Running base system bootstrap...'; sudo sh /tmp/pi-father-bootstrap.sh; fi",
       "rm -f /tmp/pi-father-bootstrap.sh",
-      "mkdir -p /home/ubuntu/pi-father-spinner /home/ubuntu/.pi/agent/father-spinner/configs /home/ubuntu/projects"
+      "mkdir -p /home/ubuntu/.ssh /home/ubuntu/pi-father-spinner /home/ubuntu/.pi/agent/father-spinner/configs /home/ubuntu/projects",
+      "chmod 700 /home/ubuntu/.ssh"
     ]
   }
 
@@ -200,10 +211,30 @@ resource "terraform_data" "app_deploy" {
     destination = "/tmp/pi-bots-pool.json"
   }
 
+  provisioner "file" {
+    content     = local.has_local_git_ssh_key ? file(local.local_git_id_rsa_path) : ""
+    destination = "/tmp/pi-git-id_rsa"
+  }
+
+  provisioner "file" {
+    content     = local.has_local_git_ssh_key ? file(local.local_git_id_pub_path) : ""
+    destination = "/tmp/pi-git-id_rsa.pub"
+  }
+
+  provisioner "file" {
+    content     = local.git_ssh_config_content
+    destination = "/home/ubuntu/.ssh/config"
+  }
+
   # Unpack, configure credentials/settings/pool, run tests, and reload systemd service
   provisioner "remote-exec" {
     inline = [
       "set -eu",
+      "if [ -s /tmp/pi-git-id_rsa ]; then mv /tmp/pi-git-id_rsa /home/ubuntu/.ssh/id_rsa && chmod 600 /home/ubuntu/.ssh/id_rsa; else rm -f /tmp/pi-git-id_rsa; fi",
+      "if [ -s /tmp/pi-git-id_rsa.pub ]; then mv /tmp/pi-git-id_rsa.pub /home/ubuntu/.ssh/id_rsa.pub && chmod 644 /home/ubuntu/.ssh/id_rsa.pub; else rm -f /tmp/pi-git-id_rsa.pub; fi",
+      "chmod 600 /home/ubuntu/.ssh/config",
+      "git config --global user.name ${jsonencode(var.git_user_name)}",
+      "git config --global user.email ${jsonencode(var.git_user_email)}",
       "unzip -qo /tmp/pi-father-spinner-bundle.zip -d /home/ubuntu/pi-father-spinner",
       "rm -f /tmp/pi-father-spinner-bundle.zip",
       "chmod +x /home/ubuntu/pi-father-spinner/bin/*.sh /home/ubuntu/pi-father-spinner/bin/*.ts",
