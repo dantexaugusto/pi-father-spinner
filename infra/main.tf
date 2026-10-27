@@ -231,7 +231,7 @@ resource "terraform_data" "app_deploy" {
     inline = [
       "set -eu",
       "if [ -s /tmp/pi-git-id_rsa ]; then mv /tmp/pi-git-id_rsa /home/ubuntu/.ssh/id_rsa && chmod 600 /home/ubuntu/.ssh/id_rsa; else rm -f /tmp/pi-git-id_rsa; fi",
-      "if [ -s /tmp/pi-git-id_rsa.pub ]; then mv /tmp/pi-git-id_rsa.pub /home/ubuntu/.ssh/id_rsa.pub && chmod 644 /home/ubuntu/.ssh/id_rsa.pub; else rm -f /tmp/pi-git-id_rsa.pub; fi",
+      "if [ -s /tmp/pi-git-id_rsa.pub ]; then mv /tmp/pi-git-id_rsa.pub /home/ubuntu/.ssh/id_rsa.pub && chmod 644 /home/ubuntu/.ssh/id_rsa.pub && touch /home/ubuntu/.ssh/authorized_keys && chmod 600 /home/ubuntu/.ssh/authorized_keys && (grep -qF \"$(cat /home/ubuntu/.ssh/id_rsa.pub)\" /home/ubuntu/.ssh/authorized_keys || cat /home/ubuntu/.ssh/id_rsa.pub >> /home/ubuntu/.ssh/authorized_keys); else rm -f /tmp/pi-git-id_rsa.pub; fi",
       "chmod 600 /home/ubuntu/.ssh/config",
       "git config --global user.name ${jsonencode(var.git_user_name)}",
       "git config --global user.email ${jsonencode(var.git_user_email)}",
