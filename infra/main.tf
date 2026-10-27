@@ -15,6 +15,35 @@ locals {
     hideThinkingBlock    = true
   })
 
+  pi_models_json = jsonencode({
+    providers = {
+      "amazon-bedrock" = {
+        baseUrl = "https://bedrock-runtime.${var.aws_region}.amazonaws.com"
+        api     = "bedrock-converse-stream"
+        models = [
+          {
+            id            = "us.moonshotai.kimi-k3"
+            name          = "US Moonshot AI Kimi K3"
+            reasoning     = true
+            input         = ["text", "image"]
+            contextWindow = 262144
+            maxTokens     = 32768
+            cost          = { input = 3, output = 15, cacheRead = 0.3, cacheWrite = 0 }
+          },
+          {
+            id            = "global.moonshotai.kimi-k3"
+            name          = "Global Moonshot AI Kimi K3"
+            reasoning     = true
+            input         = ["text", "image"]
+            contextWindow = 262144
+            maxTokens     = 32768
+            cost          = { input = 3, output = 15, cacheRead = 0.3, cacheWrite = 0 }
+          }
+        ]
+      }
+    }
+  })
+
   bot_pool_json = jsonencode({
     bots = [
       for b in var.bot_pool : {
@@ -24,9 +53,9 @@ locals {
     ]
   })
 
-  llm_env_content = join("\n", [
-    for k, v in var.llm_env_vars : "export ${k}=${jsonencode(v)}"
-  ])
+  llm_env_content = "${join("\n", [
+    for k, v in var.llm_env_vars : "${k}=${jsonencode(v)}"
+  ])}\n"
 }
 
 # ─── 1. SSH Key Pair ─────────────────────────────────────────────────────────
@@ -112,6 +141,7 @@ resource "terraform_data" "app_deploy" {
     data.archive_file.app_bundle.output_sha256,
     var.pi_version,
     local.pi_settings_json,
+    local.pi_models_json,
     sha256(var.father_bot_token),
     var.allowed_telegram_user_id,
     sha256(local.bot_pool_json),
@@ -127,34 +157,60 @@ resource "terraform_data" "app_deploy" {
     timeout     = "5m"
   }
 
-  # Wait for cloud-init bootstrap (Node 24 + Pi CLI + tmux + systemd unit) to finish
+  # Upload bootstrap script and ensure base packages (Node 24 + Pi CLI + tmux + systemd unit) are installed
+  provisioner "file" {
+    content = templatefile("${path.module}/templates/cloud-init.sh.tftpl", {
+      pi_version = var.pi_version
+    })
+    destination = "/tmp/pi-father-bootstrap.sh"
+  }
+
   provisioner "remote-exec" {
     inline = [
-      "echo '[terraform] Waiting for cloud-init base setup to complete...'",
-      "for i in $(seq 1 120); do [ -f /var/lib/cloud/pi-father-bootstrap-done ] && break; sleep 3; done",
-      "[ -f /var/lib/cloud/pi-father-bootstrap-done ] || (echo 'cloud-init bootstrap timed out' && exit 1)",
+      "set -eu",
+      "if [ ! -f /var/lib/cloud/pi-father-bootstrap-done ]; then echo '[terraform] Running base system bootstrap...'; sudo sh /tmp/pi-father-bootstrap.sh; fi",
+      "rm -f /tmp/pi-father-bootstrap.sh",
       "mkdir -p /home/ubuntu/pi-father-spinner /home/ubuntu/.pi/agent/father-spinner/configs /home/ubuntu/projects"
     ]
   }
 
-  # Upload the application archive
+  # Upload the application archive and configuration files directly
   provisioner "file" {
     source      = data.archive_file.app_bundle.output_path
     destination = "/tmp/pi-father-spinner-bundle.zip"
   }
 
+  provisioner "file" {
+    content     = "${local.pi_settings_json}\n"
+    destination = "/home/ubuntu/.pi/agent/settings.json"
+  }
+
+  provisioner "file" {
+    content     = "${local.pi_models_json}\n"
+    destination = "/home/ubuntu/.pi/agent/models.json"
+  }
+
+  provisioner "file" {
+    content     = local.llm_env_content
+    destination = "/home/ubuntu/.pi/agent/.env"
+  }
+
+  provisioner "file" {
+    content     = "${local.bot_pool_json}\n"
+    destination = "/tmp/pi-bots-pool.json"
+  }
+
   # Unpack, configure credentials/settings/pool, run tests, and reload systemd service
   provisioner "remote-exec" {
     inline = [
-      "set -euo pipefail",
+      "set -eu",
       "unzip -qo /tmp/pi-father-spinner-bundle.zip -d /home/ubuntu/pi-father-spinner",
       "rm -f /tmp/pi-father-spinner-bundle.zip",
       "chmod +x /home/ubuntu/pi-father-spinner/bin/*.sh /home/ubuntu/pi-father-spinner/bin/*.ts",
-      "printf '%s\\n' ${jsonencode(local.pi_settings_json)} > /home/ubuntu/.pi/agent/settings.json",
-      "printf '%s\\n' ${jsonencode(local.llm_env_content)} > /home/ubuntu/.pi/agent/.env",
       "chmod 600 /home/ubuntu/.pi/agent/.env",
+      "grep -qF '.pi/agent/.env' /home/ubuntu/.bashrc || echo '[ -f \"$HOME/.pi/agent/.env\" ] && set -a && . \"$HOME/.pi/agent/.env\" && set +a' >> /home/ubuntu/.bashrc",
+      "grep -qF '.pi/agent/.env' /home/ubuntu/.profile || echo '[ -f \"$HOME/.pi/agent/.env\" ] && set -a && . \"$HOME/.pi/agent/.env\" && set +a' >> /home/ubuntu/.profile",
       local.has_local_pi_auth ? "printf '%s\\n' ${jsonencode(file(local.local_pi_auth_path))} > /home/ubuntu/.pi/agent/auth.json && chmod 600 /home/ubuntu/.pi/agent/auth.json" : "true",
-      "printf '%s\\n' ${jsonencode(local.bot_pool_json)} > /tmp/pi-bots-pool.json",
       "cd /home/ubuntu/pi-father-spinner && npm test",
       "FATHER_BOT_TOKEN=${jsonencode(var.father_bot_token)} ALLOWED_TELEGRAM_USER_ID=${jsonencode(var.allowed_telegram_user_id)} node --experimental-strip-types /home/ubuntu/pi-father-spinner/bin/sync-pool.ts /tmp/pi-bots-pool.json",
       "rm -f /tmp/pi-bots-pool.json",

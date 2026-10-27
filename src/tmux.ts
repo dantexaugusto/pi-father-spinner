@@ -100,9 +100,14 @@ export async function spawnPiTmuxSession(options: SpawnPiTmuxOptions): Promise<v
 
 	const piBin = options.piBinary || process.env.PI_BINARY || "pi";
 	const currentPath = process.env.PATH || "/usr/local/bin:/usr/bin:/bin";
+	const defaultProvider = process.env.PI_DEFAULT_PROVIDER || "amazon-bedrock";
+	const selectedModel = options.model?.trim() || process.env.PI_DEFAULT_MODEL || "deepseek.v3.2";
+	const awsRegion = process.env.AWS_REGION || "us-east-1";
 
 	const cmdParts: string[] = [
 		`export PATH=${shellQuote(currentPath)};`,
+		`export AWS_REGION=${shellQuote(awsRegion)};`,
+		`[ -f "$HOME/.pi/agent/.env" ] && set -a && . "$HOME/.pi/agent/.env" && set +a;`,
 		`export PI_CHILD_AGENT=1;`,
 		`export PI_AGENT_NAME=${shellQuote(options.agentName)};`,
 		`export PI_TELEGRAM_CONFIG=${shellQuote(options.telegramConfigPath)};`,
@@ -115,9 +120,10 @@ export async function spawnPiTmuxSession(options: SpawnPiTmuxOptions): Promise<v
 		cmdParts.push("-c");
 	}
 
-	if (options.model) {
-		cmdParts.push("--model", shellQuote(options.model));
+	if (!selectedModel.includes("/")) {
+		cmdParts.push("--provider", shellQuote(defaultProvider));
 	}
+	cmdParts.push("--model", shellQuote(selectedModel));
 
 	if (options.initialPrompt && options.initialPrompt.trim().length > 0) {
 		cmdParts.push(shellQuote(options.initialPrompt.trim()));

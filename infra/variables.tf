@@ -55,13 +55,13 @@ variable "pi_version" {
 variable "default_provider" {
   description = "Default LLM provider for Pi settings.json on the VM"
   type        = string
-  default     = "google-gemini-cli"
+  default     = "amazon-bedrock"
 }
 
 variable "default_model" {
   description = "Default LLM model for Pi settings.json on the VM"
   type        = string
-  default     = "gemini-3.1-pro-preview"
+  default     = "deepseek.v3.2"
 }
 
 variable "default_thinking_level" {

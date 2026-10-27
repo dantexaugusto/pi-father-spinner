@@ -249,7 +249,8 @@ export default function (pi: ExtensionAPI) {
 			),
 			model: Type.Optional(
 				Type.String({
-					description: "Optional model override for the child Pi agent (e.g. 'gemini-3.1-pro-preview').",
+					description:
+						"Optional model override for the child Pi agent (defaults to 'deepseek.v3.2' on 'amazon-bedrock'; alternatives: 'us.moonshotai.kimi-k3', 'us.anthropic.claude-sonnet-4-6').",
 				}),
 			),
 			initialPrompt: Type.Optional(

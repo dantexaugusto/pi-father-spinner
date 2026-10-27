@@ -16,17 +16,28 @@ ssh_private_key_path = ""
 
 # ─── Pi Agent & LLM Configuration ────────────────────────────────────────────
 pi_version             = "0.80.2"
-default_provider       = "google-gemini-cli"
-default_model          = "gemini-3.1-pro-preview"
+# Default model is DeepSeek V3.2 on Amazon Bedrock ($0.62/1M in, $1.85/1M out, reasoning + tools).
+# Alternatives: "us.moonshotai.kimi-k3", "us.anthropic.claude-sonnet-4-6", "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+default_provider       = "amazon-bedrock"
+default_model          = "deepseek.v3.2"
 default_thinking_level = "high"
 sync_local_pi_auth     = true
 
-# Optional LLM API keys (if not using OAuth in ~/.pi/agent/auth.json)
+# LLM API keys written to ~/.pi/agent/.env on the VM (loaded by Pi-Father and all child tmux sessions)
 llm_env_vars = {
-  # GEMINI_API_KEY     = "AIza..."
-  # ANTHROPIC_API_KEY  = "sk-ant-..."
-  # OPENAI_API_KEY     = "sk-..."
-  # OPENROUTER_API_KEY = "sk-or-..."
+  # Amazon Bedrock API Key (Bearer Token) + Region:
+  # AWS_BEARER_TOKEN_BEDROCK = "ABSK..."
+  # AWS_REGION               = "us-east-1"
+
+  # Or IAM Access Keys for Bedrock:
+  # AWS_ACCESS_KEY_ID        = "AKIA..."
+  # AWS_SECRET_ACCESS_KEY    = "..."
+  # AWS_REGION               = "us-east-1"
+
+  # Other providers (optional):
+  # GEMINI_API_KEY           = "AIza..."
+  # ANTHROPIC_API_KEY        = "sk-ant-..."
+  # OPENAI_API_KEY           = "sk-..."
 }
 
 # ─── Telegram Bots Configuration ─────────────────────────────────────────────

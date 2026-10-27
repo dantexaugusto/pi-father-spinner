@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euxo pipefail
+#!/bin/sh
+set -eux
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -24,8 +24,9 @@ if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
 fi
 
 # 2. Install Node.js 24 LTS system-wide (/usr/bin/node)
-if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | cut -d. -f1 | tr -d 'v')" -lt 24 ]]; then
+if ! command -v node >/dev/null 2>&1 || [ "$(node -v | cut -d. -f1 | tr -d 'v')" -lt 24 ]; then
   mkdir -p /etc/apt/keyrings
+  rm -f /etc/apt/keyrings/nodesource.gpg
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
   apt-get update -y
@@ -59,6 +60,7 @@ Environment="HOME=/home/ubuntu"
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 Environment="PI_PROJECTS_ROOT=/home/ubuntu/projects"
 Environment="PI_TELEGRAM_AUTOCONNECT=1"
+ExecStartPre=-/bin/rm -f /tmp/pi-father.stop
 ExecStartPre=-/usr/bin/tmux kill-session -t pi-father
 ExecStart=/usr/bin/tmux new-session -d -s pi-father -c /home/ubuntu/pi-father-spinner "/home/ubuntu/pi-father-spinner/bin/run-father-loop.sh"
 ExecStop=/bin/bash -c 'touch /tmp/pi-father.stop && /usr/bin/tmux kill-session -t pi-father || true'
