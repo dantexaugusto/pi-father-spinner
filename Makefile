@@ -22,6 +22,7 @@ infra-apply:
 	terraform -chdir=$(TERRAFORM_DIR) apply
 
 ansible-deploy:
+	node --experimental-strip-types bin/generate-ansible-vars.ts
 	cd $(ANSIBLE_DIR) && PATH="$$HOME/.local/bin:$$PATH" ANSIBLE_CONFIG="$$(pwd)/ansible.cfg" ansible-playbook -i inventory.ini playbook.yml
 
 infra-destroy:
