@@ -1,0 +1,287 @@
+---
+- name: Configure and Deploy Pi-Father Spinner on Ubuntu VM
+  hosts: pi_father
+  become: false
+  gather_facts: true
+
+  vars:
+    app_dir: /home/ubuntu/pi-father-spinner
+    projects_dir: /home/ubuntu/projects
+    pi_agent_dir: /home/ubuntu/.pi/agent
+    father_data_dir: /home/ubuntu/.pi/agent/father-spinner
+    father_configs_dir: /home/ubuntu/.pi/agent/father-spinner/configs
+    git_repo_url: "git@github.com:dantexaugusto/pi-father-spinner.git"
+    git_branch: "main"
+
+  tasks:
+    # ─── 1. System Packages & Node.js 24 LTS (as root) ───────────────────────
+    - name: Install base system packages via apt
+      become: true
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - git
+          - tmux
+          - jq
+          - sqlite3
+          - ripgrep
+          - fd-find
+          - unzip
+          - build-essential
+        state: present
+
+    - name: Ensure /usr/local/bin/fd symlink points to fdfind
+      become: true
+      ansible.builtin.file:
+        src: /usr/bin/fdfind
+        dest: /usr/local/bin/fd
+        state: link
+        force: true
+
+    - name: Check installed Node.js major version
+      ansible.builtin.command: node -v
+      register: node_version_check
+      changed_when: false
+      failed_when: false
+
+    - name: Setup NodeSource Node.js 24 LTS repository and install nodejs
+      become: true
+      when: node_version_check.rc != 0 or (node_version_check.stdout | regex_replace('^v([0-9]+).*', '\\1') | int) < 24
+      ansible.builtin.shell: |
+        set -eu
+        mkdir -p /etc/apt/keyrings
+        rm -f /etc/apt/keyrings/nodesource.gpg
+        curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+        apt-get update -y
+        apt-get install -y nodejs
+
+    - name: Check installed Pi Coding Agent version
+      ansible.builtin.command: pi --version
+      register: pi_version_check
+      changed_when: false
+      failed_when: false
+
+    - name: Install @earendil-works/pi-coding-agent globally
+      become: true
+      when: pi_version_check.rc != 0 or (pi_version_check.stdout | trim) != pi_version
+      ansible.builtin.command: "npm install -g --ignore-scripts @earendil-works/pi-coding-agent@{{ pi_version }}"
+
+    # ─── 2. User Directories & SSH / Git Configuration ───────────────────────
+    - name: Ensure required user directories exist
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "/home/ubuntu/.ssh", mode: "0700" }
+        - { path: "{{ projects_dir }}", mode: "0755" }
+        - { path: "/home/ubuntu/.pi", mode: "0700" }
+        - { path: "{{ pi_agent_dir }}", mode: "0700" }
+        - { path: "{{ father_data_dir }}", mode: "0700" }
+        - { path: "{{ father_configs_dir }}", mode: "0700" }
+
+    - name: Copy local Git SSH private key (id_rsa) to VM
+      when: local_git_id_rsa_content | default('') | length > 0
+      ansible.builtin.copy:
+        content: "{{ local_git_id_rsa_content }}"
+        dest: /home/ubuntu/.ssh/id_rsa
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+      no_log: true
+
+    - name: Copy local Git SSH public key (id_rsa.pub) to VM
+      when: local_git_id_pub_content | default('') | length > 0
+      ansible.builtin.copy:
+        content: "{{ local_git_id_pub_content }}"
+        dest: /home/ubuntu/.ssh/id_rsa.pub
+        owner: ubuntu
+        group: ubuntu
+        mode: "0644"
+
+    - name: Authorize local id_rsa.pub for direct SSH login to VM
+      when: local_git_id_pub_content | default('') | length > 0
+      ansible.builtin.lineinfile:
+        path: /home/ubuntu/.ssh/authorized_keys
+        line: "{{ local_git_id_pub_content | trim }}"
+        create: true
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+
+    - name: Configure /home/ubuntu/.ssh/config for non-interactive Git host verification
+      ansible.builtin.copy:
+        dest: /home/ubuntu/.ssh/config
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+        content: |
+          Host github.com gitlab.com bitbucket.org ssh.dev.azure.com
+            StrictHostKeyChecking accept-new
+            IdentityFile ~/.ssh/id_rsa
+
+    - name: Configure global git user.name and user.email
+      ansible.builtin.shell: |
+        git config --global user.name "{{ git_user_name }}"
+        git config --global user.email "{{ git_user_email }}"
+      changed_when: false
+
+    # ─── 3. Clone & Harden Pi-Father Repository from GitHub ──────────────────
+    - name: Check if app_dir exists and whether it is a valid git repository
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/.git"
+      register: app_git_dir
+
+    - name: Unlock write permissions on app_dir before git sync
+      ansible.builtin.shell: "chmod -R u+w {{ app_dir }} || true"
+      when: app_git_dir.stat.exists
+      changed_when: false
+
+    - name: Remove non-git app_dir if previously unpacked from zip bundle
+      when: not app_git_dir.stat.exists
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: absent
+
+    - name: Clone or update pi-father-spinner repository from GitHub
+      ansible.builtin.git:
+        repo: "{{ git_repo_url }}"
+        dest: "{{ app_dir }}"
+        version: "{{ git_branch }}"
+        force: true
+        accept_newhostkey: true
+
+    - name: Clean any untracked files inside pi-father-spinner repository
+      ansible.builtin.command:
+        cmd: git clean -fd
+        chdir: "{{ app_dir }}"
+      changed_when: false
+
+    - name: Ensure executable permissions on bin scripts
+      ansible.builtin.shell: "chmod 0755 {{ app_dir }}/bin/*.sh {{ app_dir }}/bin/*.ts"
+      changed_when: false
+
+    - name: Write-protect orchestrator source code so agents cannot corrupt it at runtime
+      ansible.builtin.shell: |
+        chmod -R a-w {{ app_dir }}/src {{ app_dir }}/extensions {{ app_dir }}/bin {{ app_dir }}/test {{ app_dir }}/AGENTS.md {{ app_dir }}/package.json
+      changed_when: false
+
+    # ─── 4. Pi Agent Configuration & Credentials ─────────────────────────────
+    - name: Write ~/.pi/agent/settings.json
+      ansible.builtin.copy:
+        content: "{{ pi_settings_json | to_nice_json }}\n"
+        dest: "{{ pi_agent_dir }}/settings.json"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+
+    - name: Write ~/.pi/agent/models.json
+      ansible.builtin.copy:
+        content: "{{ pi_models_json | to_nice_json }}\n"
+        dest: "{{ pi_agent_dir }}/models.json"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+
+    - name: Write ~/.pi/agent/.env (LLM credentials)
+      ansible.builtin.copy:
+        content: "{{ llm_env_content }}"
+        dest: "{{ pi_agent_dir }}/.env"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+      no_log: true
+
+    - name: Ensure ~/.bashrc and ~/.profile auto-load ~/.pi/agent/.env
+      ansible.builtin.lineinfile:
+        path: "{{ item }}"
+        line: '[ -f "$HOME/.pi/agent/.env" ] && set -a && . "$HOME/.pi/agent/.env" && set +a'
+        create: true
+      loop:
+        - /home/ubuntu/.bashrc
+        - /home/ubuntu/.profile
+
+    - name: Sync bot pool and Father Telegram config into SQLite
+      ansible.builtin.copy:
+        content: "{{ bot_pool_json | to_nice_json }}\n"
+        dest: /tmp/pi-bots-pool.json
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+      no_log: true
+
+    - name: Run unit and integration test suite on VM
+      ansible.builtin.command:
+        cmd: npm test
+        chdir: "{{ app_dir }}"
+      changed_when: false
+
+    - name: Execute sync-pool.ts to configure Father bot and child pool
+      ansible.builtin.command:
+        cmd: "node --experimental-strip-types {{ app_dir }}/bin/sync-pool.ts /tmp/pi-bots-pool.json"
+        chdir: "{{ app_dir }}"
+      environment:
+        FATHER_BOT_TOKEN: "{{ father_bot_token }}"
+        ALLOWED_TELEGRAM_USER_ID: "{{ allowed_telegram_user_id }}"
+      no_log: true
+      changed_when: false
+
+    - name: Remove temporary bot pool file
+      ansible.builtin.file:
+        path: /tmp/pi-bots-pool.json
+        state: absent
+
+    # ─── 5. Systemd Service & Reconciliation ─────────────────────────────────
+    - name: Install /etc/systemd/system/pi-father.service
+      become: true
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/pi-father.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Pi-Father Spinner Master Agent (tmux session: pi-father)
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=forking
+          User=ubuntu
+          Group=ubuntu
+          WorkingDirectory={{ app_dir }}
+          Environment="HOME=/home/ubuntu"
+          Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+          Environment="PI_PROJECTS_ROOT={{ projects_dir }}"
+          Environment="PI_TELEGRAM_AUTOCONNECT=1"
+          ExecStartPre=-/bin/rm -f /tmp/pi-father.stop
+          ExecStartPre=-/usr/bin/tmux kill-session -t pi-father
+          ExecStart=/usr/bin/tmux new-session -d -s pi-father -c {{ app_dir }} "{{ app_dir }}/bin/run-father-loop.sh"
+          ExecStop=/bin/bash -c 'touch /tmp/pi-father.stop && /usr/bin/tmux kill-session -t pi-father || true'
+          Restart=always
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd and restart pi-father.service
+      become: true
+      ansible.builtin.systemd:
+        name: pi-father.service
+        daemon_reload: true
+        enabled: true
+        state: restarted
+
+    - name: Wait for pi-father tmux session to initialize and reconcile child agents
+      ansible.builtin.shell: |
+        sleep 3
+        systemctl is-active pi-father.service
+        tmux has-session -t pi-father
+      changed_when: false

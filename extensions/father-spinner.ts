@@ -242,6 +242,18 @@ export default function (pi: ExtensionAPI) {
 						"Optional specific @bot_username or botId from the pool. If omitted, picks the first available bot.",
 				}),
 			),
+			botToken: Type.Optional(
+				Type.String({
+					description:
+						"Optional new Telegram Bot Token from @BotFather (e.g. '123456:ABC...'). If provided, automatically registers this token in the pool and allocates it to this new agent in a single step.",
+				}),
+			),
+			gitRepoUrl: Type.Optional(
+				Type.String({
+					description:
+						"Optional Git repository URL (HTTPS or SSH, e.g. 'https://github.com/owner/repo' or 'git@github.com:owner/repo.git') to automatically clone into the agent's working directory before starting.",
+				}),
+			),
 			continueSession: Type.Optional(
 				Type.Boolean({
 					description: "Pass -c (--continue) to pi to resume the most recent session in that directory.",
@@ -268,6 +280,8 @@ export default function (pi: ExtensionAPI) {
 				displayName: params.displayName,
 				shortDescription: params.shortDescription,
 				botIdentifier: params.botIdentifier,
+				botToken: params.botToken,
+				gitRepoUrl: params.gitRepoUrl,
 				continueSession: params.continueSession,
 				model: params.model,
 				initialPrompt: params.initialPrompt,

@@ -8,10 +8,14 @@
  * - Tmux session lifecycle & automatic crash recovery (`reconcileAgents`)
  */
 
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { execFile as execFileCb } from "node:child_process";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
+const execFile = promisify(execFileCb);
 
 import {
 	type BotPoolRecord,
@@ -63,12 +67,23 @@ export interface SpinUpAgentOptions {
 	displayName?: string;
 	shortDescription?: string;
 	botIdentifier?: string | number;
+	botToken?: string;
+	gitRepoUrl?: string;
 	allowedUserId?: number;
 	continueSession?: boolean;
 	model?: string;
 	initialPrompt?: string;
 	autoRecover?: boolean;
 	sendWelcomeMessage?: boolean;
+}
+
+export function normalizeGitRepoUrl(rawUrl: string): string {
+	const trimmed = rawUrl.trim();
+	const ghHttpsMatch = trimmed.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+	if (ghHttpsMatch) {
+		return `git@github.com:${ghHttpsMatch[1]}/${ghHttpsMatch[2]}.git`;
+	}
+	return trimmed;
 }
 
 export interface SpinUpAgentResult {
@@ -308,13 +323,30 @@ export class FatherOrchestrator {
 		}
 
 		const cwd = resolveProjectCwd(slug, options.cwd);
-		if (options.createDir !== false) {
+		if (options.gitRepoUrl?.trim()) {
+			const repoUrl = normalizeGitRepoUrl(options.gitRepoUrl);
+			await mkdir(dirname(cwd), { recursive: true });
+			const gitDirStat = await stat(join(cwd, ".git")).catch(() => null);
+			if (!gitDirStat) {
+				const cwdStat = await stat(cwd).catch(() => null);
+				const entries = cwdStat?.isDirectory() ? await readdir(cwd) : [];
+				if (entries.length === 0) {
+					await execFile("git", ["clone", repoUrl, cwd], { timeout: 120_000 });
+				}
+			}
+		} else if (options.createDir !== false) {
 			await mkdir(cwd, { recursive: true });
 		} else {
 			const st = await stat(cwd).catch(() => null);
 			if (!st || !st.isDirectory()) {
 				throw new Error(`Directory does not exist: ${cwd}`);
 			}
+		}
+
+		let preferredBotIdentifier = options.botIdentifier;
+		if (options.botToken?.trim()) {
+			const pooledBot = await this.addBotToPool(options.botToken.trim(), options.displayName);
+			preferredBotIdentifier = pooledBot.botId;
 		}
 
 		const tmuxSession = buildTmuxSessionName(slug);
@@ -339,7 +371,7 @@ export class FatherOrchestrator {
 			model: options.model ?? null,
 			initialPrompt: options.initialPrompt ?? null,
 			autoRecover: options.autoRecover ?? true,
-			preferredBotIdentifier: options.botIdentifier,
+			preferredBotIdentifier,
 		});
 
 		try {

@@ -56,6 +56,8 @@ state/
 .terraformrc
 terraform.rc
 infra/.build/
+infra/ansible/inventory.ini
+infra/ansible/group_vars/
 *.zip
 *.tar.gz
 

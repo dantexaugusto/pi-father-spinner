@@ -1,6 +1,7 @@
-.PHONY: test infra-init infra-fmt infra-validate infra-plan infra-apply infra-destroy ssh attach-father status
+.PHONY: test infra-init infra-fmt infra-validate infra-plan infra-apply infra-destroy ansible-deploy ssh attach-father status
 
 TERRAFORM_DIR := infra
+ANSIBLE_DIR := infra/ansible
 
 test:
 	npm test
@@ -19,6 +20,9 @@ infra-plan:
 
 infra-apply:
 	terraform -chdir=$(TERRAFORM_DIR) apply
+
+ansible-deploy:
+	cd $(ANSIBLE_DIR) && PATH="$$HOME/.local/bin:$$PATH" ANSIBLE_CONFIG="$$(pwd)/ansible.cfg" ansible-playbook -i inventory.ini playbook.yml
 
 infra-destroy:
 	terraform -chdir=$(TERRAFORM_DIR) destroy

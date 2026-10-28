@@ -8,23 +8,17 @@ locals {
 
   ssh_public_key_content  = local.use_custom_ssh_key ? trimspace(file(pathexpand(var.ssh_public_key_path))) : trimspace(tls_private_key.generated[0].public_key_openssh)
   ssh_private_key_content = local.use_custom_ssh_key ? file(pathexpand(var.ssh_private_key_path)) : tls_private_key.generated[0].private_key_openssh
-  ssh_private_key_file    = local.use_custom_ssh_key ? pathexpand(var.ssh_private_key_path) : local_sensitive_file.ssh_private_key[0].filename
+  ssh_private_key_file    = local.use_custom_ssh_key ? pathexpand(var.ssh_private_key_path) : abspath(local_sensitive_file.ssh_private_key[0].filename)
 
-  git_ssh_config_content = <<-EOT
-    Host github.com gitlab.com bitbucket.org ssh.dev.azure.com
-      StrictHostKeyChecking accept-new
-      IdentityFile ~/.ssh/id_rsa
-  EOT
-
-  pi_settings_json = jsonencode({
+  pi_settings_obj = {
     defaultProvider      = var.default_provider
     defaultModel         = var.default_model
     defaultThinkingLevel = var.default_thinking_level
     theme                = "light"
     hideThinkingBlock    = true
-  })
+  }
 
-  pi_models_json = jsonencode({
+  pi_models_obj = {
     providers = {
       "amazon-bedrock" = {
         baseUrl = "https://bedrock-runtime.${var.aws_region}.amazonaws.com"
@@ -51,20 +45,34 @@ locals {
         ]
       }
     }
-  })
+  }
 
-  bot_pool_json = jsonencode({
+  bot_pool_obj = {
     bots = [
       for b in var.bot_pool : {
         token       = b.token
         defaultName = b.default_name
       }
     ]
-  })
+  }
 
   llm_env_content = "${join("\n", [
     for k, v in var.llm_env_vars : "${k}=${jsonencode(v)}"
   ])}\n"
+
+  ansible_group_vars_yaml = yamlencode({
+    pi_version               = var.pi_version
+    git_user_name            = var.git_user_name
+    git_user_email           = var.git_user_email
+    father_bot_token         = var.father_bot_token
+    allowed_telegram_user_id = var.allowed_telegram_user_id
+    pi_settings_json         = local.pi_settings_obj
+    pi_models_json           = local.pi_models_obj
+    bot_pool_json            = local.bot_pool_obj
+    llm_env_content          = local.llm_env_content
+    local_git_id_rsa_content = local.has_local_git_ssh_key ? file(local.local_git_id_rsa_path) : ""
+    local_git_id_pub_content = local.has_local_git_ssh_key ? file(local.local_git_id_pub_path) : ""
+  })
 }
 
 # ─── 1. SSH Key Pair ─────────────────────────────────────────────────────────
@@ -123,132 +131,44 @@ resource "aws_lightsail_instance_public_ports" "pi_firewall" {
   }
 }
 
-# ─── 3. Deterministic Application Bundle ─────────────────────────────────────
-data "archive_file" "app_bundle" {
-  type        = "zip"
-  source_dir  = "${path.module}/.."
-  output_path = "${path.module}/.build/app-bundle.zip"
-
-  excludes = [
-    ".git",
-    "node_modules",
-    "infra",
-    ".env",
-    "bots-pool.json"
-  ]
+# ─── 3. Generate Ansible Inventory & Variables ───────────────────────────────
+resource "local_sensitive_file" "ansible_inventory" {
+  file_permission = "0600"
+  filename        = "${path.module}/ansible/inventory.ini"
+  content         = <<-EOT
+    [pi_father]
+    ${aws_lightsail_static_ip.pi_ip.ip_address} ansible_user=ubuntu ansible_ssh_private_key_file=${local.ssh_private_key_file}
+  EOT
 }
 
-# ─── 4. In-Place Code & Config Sync (Runs on `terraform apply`) ──────────────
+resource "local_sensitive_file" "ansible_group_vars" {
+  file_permission = "0600"
+  filename        = "${path.module}/ansible/group_vars/all.yml"
+  content         = local.ansible_group_vars_yaml
+}
+
+# ─── 4. Run Ansible Playbook to Configure VM & Clone from GitHub ─────────────
 resource "terraform_data" "app_deploy" {
   depends_on = [
     aws_lightsail_static_ip_attachment.pi_ip_attach,
-    aws_lightsail_instance_public_ports.pi_firewall
+    aws_lightsail_instance_public_ports.pi_firewall,
+    local_sensitive_file.ansible_inventory,
+    local_sensitive_file.ansible_group_vars
   ]
 
   triggers_replace = [
     aws_lightsail_instance.pi_vm.id,
-    data.archive_file.app_bundle.output_sha256,
-    var.pi_version,
-    local.pi_settings_json,
-    local.pi_models_json,
-    sha256(var.father_bot_token),
-    var.allowed_telegram_user_id,
-    sha256(local.bot_pool_json),
-    sha256(local.llm_env_content),
-    local.has_local_pi_auth ? filesha256(local.local_pi_auth_path) : "no-auth",
-    local.has_local_git_ssh_key ? filesha256(local.local_git_id_rsa_path) : "no-git-ssh"
+    aws_lightsail_static_ip.pi_ip.ip_address,
+    sha256(local.ansible_group_vars_yaml),
+    filesha256("${path.module}/ansible/playbook.yml")
   ]
 
-  connection {
-    type        = "ssh"
-    user        = "ubuntu"
-    host        = aws_lightsail_static_ip.pi_ip.ip_address
-    private_key = local.ssh_private_key_content
-    timeout     = "5m"
-  }
-
-  # Upload bootstrap script and ensure base packages (Node 24 + Pi CLI + tmux + systemd unit) are installed
-  provisioner "file" {
-    content = templatefile("${path.module}/templates/cloud-init.sh.tftpl", {
-      pi_version = var.pi_version
-    })
-    destination = "/tmp/pi-father-bootstrap.sh"
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "set -eu",
-      "if [ ! -f /var/lib/cloud/pi-father-bootstrap-done ]; then echo '[terraform] Running base system bootstrap...'; sudo sh /tmp/pi-father-bootstrap.sh; fi",
-      "rm -f /tmp/pi-father-bootstrap.sh",
-      "mkdir -p /home/ubuntu/.ssh /home/ubuntu/pi-father-spinner /home/ubuntu/.pi/agent/father-spinner/configs /home/ubuntu/projects",
-      "chmod 700 /home/ubuntu/.ssh"
-    ]
-  }
-
-  # Upload the application archive and configuration files directly
-  provisioner "file" {
-    source      = data.archive_file.app_bundle.output_path
-    destination = "/tmp/pi-father-spinner-bundle.zip"
-  }
-
-  provisioner "file" {
-    content     = "${local.pi_settings_json}\n"
-    destination = "/home/ubuntu/.pi/agent/settings.json"
-  }
-
-  provisioner "file" {
-    content     = "${local.pi_models_json}\n"
-    destination = "/home/ubuntu/.pi/agent/models.json"
-  }
-
-  provisioner "file" {
-    content     = local.llm_env_content
-    destination = "/home/ubuntu/.pi/agent/.env"
-  }
-
-  provisioner "file" {
-    content     = "${local.bot_pool_json}\n"
-    destination = "/tmp/pi-bots-pool.json"
-  }
-
-  provisioner "file" {
-    content     = local.has_local_git_ssh_key ? file(local.local_git_id_rsa_path) : ""
-    destination = "/tmp/pi-git-id_rsa"
-  }
-
-  provisioner "file" {
-    content     = local.has_local_git_ssh_key ? file(local.local_git_id_pub_path) : ""
-    destination = "/tmp/pi-git-id_rsa.pub"
-  }
-
-  provisioner "file" {
-    content     = local.git_ssh_config_content
-    destination = "/home/ubuntu/.ssh/config"
-  }
-
-  # Unpack, configure credentials/settings/pool, run tests, and reload systemd service
-  provisioner "remote-exec" {
-    inline = [
-      "set -eu",
-      "if [ -s /tmp/pi-git-id_rsa ]; then mv /tmp/pi-git-id_rsa /home/ubuntu/.ssh/id_rsa && chmod 600 /home/ubuntu/.ssh/id_rsa; else rm -f /tmp/pi-git-id_rsa; fi",
-      "if [ -s /tmp/pi-git-id_rsa.pub ]; then mv /tmp/pi-git-id_rsa.pub /home/ubuntu/.ssh/id_rsa.pub && chmod 644 /home/ubuntu/.ssh/id_rsa.pub && touch /home/ubuntu/.ssh/authorized_keys && chmod 600 /home/ubuntu/.ssh/authorized_keys && (grep -qF \"$(cat /home/ubuntu/.ssh/id_rsa.pub)\" /home/ubuntu/.ssh/authorized_keys || cat /home/ubuntu/.ssh/id_rsa.pub >> /home/ubuntu/.ssh/authorized_keys); else rm -f /tmp/pi-git-id_rsa.pub; fi",
-      "chmod 600 /home/ubuntu/.ssh/config",
-      "git config --global user.name ${jsonencode(var.git_user_name)}",
-      "git config --global user.email ${jsonencode(var.git_user_email)}",
-      "unzip -qo /tmp/pi-father-spinner-bundle.zip -d /home/ubuntu/pi-father-spinner",
-      "rm -f /tmp/pi-father-spinner-bundle.zip",
-      "chmod +x /home/ubuntu/pi-father-spinner/bin/*.sh /home/ubuntu/pi-father-spinner/bin/*.ts",
-      "chmod 600 /home/ubuntu/.pi/agent/.env",
-      "grep -qF '.pi/agent/.env' /home/ubuntu/.bashrc || echo '[ -f \"$HOME/.pi/agent/.env\" ] && set -a && . \"$HOME/.pi/agent/.env\" && set +a' >> /home/ubuntu/.bashrc",
-      "grep -qF '.pi/agent/.env' /home/ubuntu/.profile || echo '[ -f \"$HOME/.pi/agent/.env\" ] && set -a && . \"$HOME/.pi/agent/.env\" && set +a' >> /home/ubuntu/.profile",
-      local.has_local_pi_auth ? "printf '%s\\n' ${jsonencode(file(local.local_pi_auth_path))} > /home/ubuntu/.pi/agent/auth.json && chmod 600 /home/ubuntu/.pi/agent/auth.json" : "true",
-      "cd /home/ubuntu/pi-father-spinner && npm test",
-      "FATHER_BOT_TOKEN=${jsonencode(var.father_bot_token)} ALLOWED_TELEGRAM_USER_ID=${jsonencode(var.allowed_telegram_user_id)} node --experimental-strip-types /home/ubuntu/pi-father-spinner/bin/sync-pool.ts /tmp/pi-bots-pool.json",
-      "rm -f /tmp/pi-bots-pool.json",
-      "sudo systemctl daemon-reload",
-      "sudo systemctl restart pi-father.service",
-      "sleep 2",
-      "sudo systemctl status pi-father.service --no-pager"
-    ]
+  provisioner "local-exec" {
+    working_dir = "${path.module}/ansible"
+    environment = {
+      PATH            = "${pathexpand("~/.local/bin")}:/usr/local/bin:/usr/bin:/bin"
+      ANSIBLE_CONFIG  = "${abspath(path.module)}/ansible/ansible.cfg"
+    }
+    command = "ansible-playbook -i inventory.ini playbook.yml"
   }
 }
