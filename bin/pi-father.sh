@@ -19,6 +19,6 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 
 echo "Starting new Pi-Father tmux session '${SESSION_NAME}' in ${FATHER_CWD} (${PI_DEFAULT_PROVIDER}/${PI_DEFAULT_MODEL})..."
 tmux new-session -d -s "${SESSION_NAME}" -c "${FATHER_CWD}" bash -lc \
-  "export PATH='${PATH}'; [ -f \"\$HOME/.pi/agent/.env\" ] && set -a && . \"\$HOME/.pi/agent/.env\" && set +a; export AWS_REGION='${AWS_REGION}'; export PI_DEFAULT_PROVIDER='${PI_DEFAULT_PROVIDER}'; export PI_DEFAULT_MODEL='${PI_DEFAULT_MODEL}'; export PI_TELEGRAM_AUTOCONNECT=1; exec pi --provider '${PI_DEFAULT_PROVIDER}' --model '${PI_DEFAULT_MODEL}' -e '${PROJECT_ROOT}/extensions/telegram.ts' -e '${PROJECT_ROOT}/extensions/father-spinner.ts' -c"
+  "export PATH='${PATH}'; [ -f \"\$HOME/.pi/agent/.env\" ] && set -a && . \"\$HOME/.pi/agent/.env\" && set +a; export AWS_REGION='${AWS_REGION}'; export PI_DEFAULT_PROVIDER='${PI_DEFAULT_PROVIDER}'; export PI_DEFAULT_MODEL='${PI_DEFAULT_MODEL}'; export PI_TELEGRAM_AUTOCONNECT=1; exec pi --provider '${PI_DEFAULT_PROVIDER}' --model '${PI_DEFAULT_MODEL}' -e '${PROJECT_ROOT}/extensions/telegram.ts' -e '${PROJECT_ROOT}/extensions/father-spinner.ts' -e '${PROJECT_ROOT}/extensions/tavily.ts' -c"
 
 exec tmux attach -t "${SESSION_NAME}"

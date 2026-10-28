@@ -84,6 +84,7 @@
         - { path: "{{ projects_dir }}", mode: "0755" }
         - { path: "/home/ubuntu/.pi", mode: "0700" }
         - { path: "{{ pi_agent_dir }}", mode: "0700" }
+        - { path: "{{ pi_agent_dir }}/extensions", mode: "0700" }
         - { path: "{{ father_data_dir }}", mode: "0700" }
         - { path: "{{ father_configs_dir }}", mode: "0700" }
 
@@ -172,6 +173,13 @@
       ansible.builtin.shell: |
         chmod -R a-w {{ app_dir }}/src {{ app_dir }}/extensions {{ app_dir }}/bin {{ app_dir }}/test {{ app_dir }}/AGENTS.md {{ app_dir }}/package.json
       changed_when: false
+
+    - name: Symlink Tavily Web Search extension into global ~/.pi/agent/extensions/
+      ansible.builtin.file:
+        src: "{{ app_dir }}/extensions/tavily.ts"
+        dest: "{{ pi_agent_dir }}/extensions/tavily.ts"
+        state: link
+        force: true
 
     # ─── 4. Pi Agent Configuration & Credentials ─────────────────────────────
     - name: Write ~/.pi/agent/settings.json

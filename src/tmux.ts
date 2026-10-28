@@ -114,6 +114,7 @@ export async function spawnPiTmuxSession(options: SpawnPiTmuxOptions): Promise<v
 		`export PI_TELEGRAM_AUTOCONNECT=1;`,
 		`exec ${shellQuote(piBin)}`,
 		`-e ${shellQuote(options.telegramExtensionPath)}`,
+		`-e ${shellQuote(options.telegramExtensionPath.replace(/telegram\.ts$/, "tavily.ts"))}`,
 	];
 
 	if (options.continueSession) {

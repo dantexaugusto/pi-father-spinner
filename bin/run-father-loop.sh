@@ -41,6 +41,7 @@ while true; do
      --model "${PI_DEFAULT_MODEL}" \
      -e "${PROJECT_ROOT}/extensions/telegram.ts" \
      -e "${PROJECT_ROOT}/extensions/father-spinner.ts" \
+     -e "${PROJECT_ROOT}/extensions/tavily.ts" \
      -c || true
 
   echo "[pi-father] Pi process exited. Restarting in 3 seconds (Ctrl+C to abort)..."

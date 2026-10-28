@@ -56,8 +56,13 @@ locals {
     ]
   }
 
+  merged_env_vars = merge(
+    var.llm_env_vars,
+    trimspace(var.tavily_api_key) != "" ? { TAVILY_API_KEY = trimspace(var.tavily_api_key) } : {}
+  )
+
   llm_env_content = "${join("\n", [
-    for k, v in var.llm_env_vars : "${k}=${jsonencode(v)}"
+    for k, v in local.merged_env_vars : "${k}=${jsonencode(v)}"
   ])}\n"
 
   ansible_group_vars_yaml = yamlencode({

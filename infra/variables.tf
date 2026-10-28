@@ -100,6 +100,13 @@ variable "llm_env_vars" {
   sensitive   = true
 }
 
+variable "tavily_api_key" {
+  description = "Tavily API Key (tvly-...) written to ~/.pi/agent/.env (as TAVILY_API_KEY) to enable native Tavily Web Search (tavily_search / tavily_extract) on Pi-Father and all spun child agents"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "sync_local_pi_auth" {
   description = "If true and ~/.pi/agent/auth.json exists locally, copies it to the VM so OAuth/subscription credentials work out-of-the-box"
   type        = bool

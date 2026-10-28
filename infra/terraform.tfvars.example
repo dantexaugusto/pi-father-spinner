@@ -40,6 +40,10 @@ llm_env_vars = {
   # OPENAI_API_KEY           = "sk-..."
 }
 
+# ─── Web Search (Tavily) ─────────────────────────────────────────────────────
+# Tavily API Key (https://app.tavily.com) — enables `tavily_search` & `tavily_extract` on Pi-Father and all child agents
+tavily_api_key         = ""
+
 # ─── Telegram Bots Configuration ─────────────────────────────────────────────
 # Master Pi-Father Bot Token from @BotFather
 father_bot_token         = "123456789:AAExampleMasterBotTokenFromBotFather"

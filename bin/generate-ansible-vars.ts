@@ -39,6 +39,8 @@ async function main() {
 	const defaultModel = extractTfvarString(tfvarsRaw, "default_model", "deepseek.v3.2");
 	const defaultThinkingLevel = extractTfvarString(tfvarsRaw, "default_thinking_level", "high");
 	const bedrockToken = extractTfvarString(tfvarsRaw, "AWS_BEARER_TOKEN_BEDROCK");
+	const tavilyApiKey =
+		extractTfvarString(tfvarsRaw, "tavily_api_key") || extractTfvarString(tfvarsRaw, "TAVILY_API_KEY");
 
 	const idRsaContent = await readFile(resolve(homedir(), ".ssh", "id_rsa"), "utf8").catch(() => "");
 	const idPubContent = await readFile(resolve(homedir(), ".ssh", "id_rsa.pub"), "utf8").catch(() => "");
@@ -50,6 +52,9 @@ async function main() {
 		llmEnvLines.push(`AWS_BEARER_TOKEN_BEDROCK=${JSON.stringify(bedrockToken)}`);
 	}
 	llmEnvLines.push(`AWS_REGION=${JSON.stringify(awsRegion)}`);
+	if (tavilyApiKey) {
+		llmEnvLines.push(`TAVILY_API_KEY=${JSON.stringify(tavilyApiKey)}`);
+	}
 
 	const groupVarsObj = {
 		pi_version: "0.80.2",

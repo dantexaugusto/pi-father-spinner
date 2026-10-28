@@ -20,7 +20,8 @@
   "pi": {
     "extensions": [
       "./extensions/telegram.ts",
-      "./extensions/father-spinner.ts"
+      "./extensions/father-spinner.ts",
+      "./extensions/tavily.ts"
     ]
   },
   "scripts": {
