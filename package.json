@@ -22,6 +22,9 @@
       "./extensions/telegram.ts",
       "./extensions/father-spinner.ts",
       "./extensions/tavily.ts"
+    ],
+    "skills": [
+      "./skills/diode-tunneling/SKILL.md"
     ]
   },
   "scripts": {

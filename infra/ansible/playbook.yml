@@ -85,6 +85,7 @@
         - { path: "/home/ubuntu/.pi", mode: "0700" }
         - { path: "{{ pi_agent_dir }}", mode: "0700" }
         - { path: "{{ pi_agent_dir }}/extensions", mode: "0700" }
+        - { path: "{{ pi_agent_dir }}/skills", mode: "0700" }
         - { path: "{{ father_data_dir }}", mode: "0700" }
         - { path: "{{ father_configs_dir }}", mode: "0700" }
 
@@ -171,13 +172,20 @@
 
     - name: Write-protect orchestrator source code so agents cannot corrupt it at runtime
       ansible.builtin.shell: |
-        chmod -R a-w {{ app_dir }}/src {{ app_dir }}/extensions {{ app_dir }}/bin {{ app_dir }}/test {{ app_dir }}/AGENTS.md {{ app_dir }}/package.json
+        chmod -R a-w {{ app_dir }}/src {{ app_dir }}/extensions {{ app_dir }}/skills {{ app_dir }}/bin {{ app_dir }}/test {{ app_dir }}/AGENTS.md {{ app_dir }}/package.json
       changed_when: false
 
     - name: Symlink Tavily Web Search extension into global ~/.pi/agent/extensions/
       ansible.builtin.file:
         src: "{{ app_dir }}/extensions/tavily.ts"
         dest: "{{ pi_agent_dir }}/extensions/tavily.ts"
+        state: link
+        force: true
+
+    - name: Symlink official Pi Skills (diode-tunneling) into global ~/.pi/agent/skills/
+      ansible.builtin.file:
+        src: "{{ app_dir }}/skills/diode-tunneling"
+        dest: "{{ pi_agent_dir }}/skills/diode-tunneling"
         state: link
         force: true
 
