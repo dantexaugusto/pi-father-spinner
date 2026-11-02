@@ -171,8 +171,8 @@ resource "terraform_data" "app_deploy" {
   provisioner "local-exec" {
     working_dir = "${path.module}/ansible"
     environment = {
-      PATH            = "${pathexpand("~/.local/bin")}:/usr/local/bin:/usr/bin:/bin"
-      ANSIBLE_CONFIG  = "${abspath(path.module)}/ansible/ansible.cfg"
+      PATH           = "${pathexpand("~/.local/bin")}:/usr/local/bin:/usr/bin:/bin"
+      ANSIBLE_CONFIG = "${abspath(path.module)}/ansible/ansible.cfg"
     }
     command = "ansible-playbook -i inventory.ini playbook.yml"
   }
