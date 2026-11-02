@@ -14,6 +14,10 @@ ssh_allowed_cidrs = ["0.0.0.0/0"]
 ssh_public_key_path  = ""
 ssh_private_key_path = ""
 
+# Global Git identity configured on the VM for Pi agents
+git_user_name        = ""
+git_user_email       = ""
+
 # ─── Pi Agent & LLM Configuration ────────────────────────────────────────────
 pi_version             = "0.80.2"
 # Default model is DeepSeek V3.2 on Amazon Bedrock ($0.62/1M in, $1.85/1M out, reasoning + tools).

@@ -122,11 +122,11 @@ variable "sync_local_git_ssh_key" {
 variable "git_user_name" {
   description = "Global git user.name configured on the VM for Pi agents"
   type        = string
-  default     = "dantexaugusto"
+  default     = ""
 }
 
 variable "git_user_email" {
   description = "Global git user.email configured on the VM for Pi agents"
   type        = string
-  default     = "dantexaugusto@gmail.com"
+  default     = ""
 }

@@ -5,6 +5,7 @@
  * can run anytime via SSH without requiring an active AWS SSO session.
  */
 
+import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -22,6 +23,14 @@ function extractTfvarString(content: string, key: string, fallback = ""): string
 	return m ? m[1] : fallback;
 }
 
+function getLocalGitConfig(key: string): string {
+	try {
+		return execFileSync("git", ["config", "--get", key], { encoding: "utf8" }).trim();
+	} catch {
+		return "";
+	}
+}
+
 async function main() {
 	const tfvarsRaw = await readFile(resolve(INFRA_DIR, "terraform.tfvars"), "utf8");
 	const tfstateRaw = await readFile(resolve(INFRA_DIR, "terraform.tfstate"), "utf8");
@@ -30,6 +39,11 @@ async function main() {
 	};
 
 	const staticIp = tfstate.outputs?.static_public_ip?.value;
+	if (!staticIp) {
+		throw new Error(
+			"Could not find static_public_ip in infra/terraform.tfstate. Run `make infra-apply` first.",
+		);
+	}
 	const sshKeyPath = resolve(INFRA_DIR, "keys", "pi-father-spinner.pem");
 
 	const awsRegion = extractTfvarString(tfvarsRaw, "aws_region", "us-east-1");
@@ -41,6 +55,8 @@ async function main() {
 	const bedrockToken = extractTfvarString(tfvarsRaw, "AWS_BEARER_TOKEN_BEDROCK");
 	const tavilyApiKey =
 		extractTfvarString(tfvarsRaw, "tavily_api_key") || extractTfvarString(tfvarsRaw, "TAVILY_API_KEY");
+	const gitUserName = extractTfvarString(tfvarsRaw, "git_user_name") || getLocalGitConfig("user.name");
+	const gitUserEmail = extractTfvarString(tfvarsRaw, "git_user_email") || getLocalGitConfig("user.email");
 
 	const idRsaContent = await readFile(resolve(homedir(), ".ssh", "id_rsa"), "utf8").catch(() => "");
 	const idPubContent = await readFile(resolve(homedir(), ".ssh", "id_rsa.pub"), "utf8").catch(() => "");
@@ -58,8 +74,8 @@ async function main() {
 
 	const groupVarsObj = {
 		pi_version: "0.80.2",
-		git_user_name: "dantexaugusto",
-		git_user_email: "dantexaugusto@gmail.com",
+		git_user_name: gitUserName,
+		git_user_email: gitUserEmail,
 		father_bot_token: fatherBotToken,
 		allowed_telegram_user_id: allowedUserId,
 		pi_settings_json: {
