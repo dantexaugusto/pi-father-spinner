@@ -23,6 +23,21 @@ function extractTfvarString(content: string, key: string, fallback = ""): string
 	return m ? m[1] : fallback;
 }
 
+function extractBotPool(content: string): Array<{ token: string; defaultName?: string }> {
+	const idx = content.search(/^\s*bot_pool\s*=\s*\[/m);
+	if (idx === -1) return [];
+	const block = content.slice(idx);
+	const bots: Array<{ token: string; defaultName?: string }> = [];
+	const entryRegex = /\{[^}]*?\btoken\s*=\s*"([^"]+)"(?:[^}]*?\bdefault_name\s*=\s*"([^"]*)")?[^}]*?\}/gs;
+	for (const match of block.matchAll(entryRegex)) {
+		bots.push({
+			token: match[1],
+			...(match[2] ? { defaultName: match[2] } : {}),
+		});
+	}
+	return bots;
+}
+
 function getLocalGitConfig(key: string): string {
 	try {
 		return execFileSync("git", ["config", "--get", key], { encoding: "utf8" }).trim();
@@ -113,7 +128,7 @@ async function main() {
 				},
 			},
 		},
-		bot_pool_json: { bots: [] },
+		bot_pool_json: { bots: extractBotPool(tfvarsRaw) },
 		llm_env_content: `${llmEnvLines.join("\n")}\n`,
 		local_git_id_rsa_content: idRsaContent,
 		local_git_id_pub_content: idPubContent,
